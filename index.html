@@ -17,6 +17,12 @@
     .tweet h5 { padding-left: 10px; }
     .tweet .tweet-footer { display: block; margin-top: 2px; color: #d3d3d3; }
     .hidden { display: none; }
+    .search-query { margin-right: 5px; }
+    #loading { margin-left: 2px; }
+    #ads { margin-top: 20px; }
+    #ads iframe { margin-bottom: 10px; }
+    .form-search p#help-text { margin: 2px 0 0 15px; font-style:italic; font-size: 100%; }
+    .form-search { margin-bottom: 15px;}
 </style>
 
 <script id="tweetTemplate" type="text/x-jquery-tmpl">
@@ -38,10 +44,12 @@ var rawTweets = new Array();
 var timedTweets = new Array();
 var displayInterval;
 var displayIntervalWait = 1000;
+var timerMultiplier = 1;
 var displaySeconds = 0;
 var displayTimeMoment;
 var displayTimeMomentDuration;
 var isPaused = false;
+var lastTime = 0;
 
 String.prototype.parseURL = function() {
 	return this.replace(/[A-Za-z]+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&~\?\/.=]+/g, function(url) {
@@ -63,11 +71,98 @@ String.prototype.parseHashtag = function() {
 	});
 };
 
-$(document).ready(function() {  
-    displayTimeMomentDuration = moment.duration(1000, 'milliseconds');  
-    var q = baseURL + '?q=from%3Aaimeemann+OR+from%3Apattonoswalt+OR+from%3Acampsucks+OR+from%3AMPenn+%23lizanddick&rpp=100';    
+$(document).ready(function() {
+    processQueryString();
     
-    getData(q, function() {
+    displayTimeMomentDuration = moment.duration(1000, 'milliseconds');  
+        
+    $('#search-form').submit(function() {
+        searchInitiated();
+        return false;
+    });
+    
+    $('#play-pause').click(function() {
+        $(this).children(":first").removeClass('icon-' + (isPaused ? 'play' : 'pause'));
+        $(this).children(":first").addClass('icon-' + (isPaused ? 'pause' : 'play'));
+
+        if(isPaused) {
+            displayInterval = setInterval(showTweets, displayIntervalWait);
+        } else {
+            clearInterval(displayInterval);
+        }
+        
+        isPaused = !isPaused;
+    });
+    
+    $('#normal-speed').click(function() {
+        if(isPaused) { return; }
+        displayIntervalWait = 1000;
+        timerMultiplier = 1;
+        clearInterval(displayInterval);
+        displayInterval = setInterval(showTweets, displayIntervalWait);
+    });
+    
+    $('#faster-speed').click(function() {
+        if(isPaused) { return; }
+        displayIntervalWait = displayIntervalWait / 10;
+        if(displayIntervalWait < 1) {
+            timerMultiplier *= 2;
+        }
+
+        clearInterval(displayInterval);
+        displayInterval = setInterval(showTweets, displayIntervalWait);
+    });
+});
+
+function searchInitiated() {
+    window.location = '/?q=' + encodeURIComponent($('#query').val());
+}
+
+function processQueryString() {
+    var q = getParameterByName('q');
+    if(q) {
+        $('#loading').show();
+        $('#query').val(decodeURIComponent(q));
+        getData(baseURL + '?q=' + q + '&rpp=100&lang=en');
+    }
+}
+
+function getParameterByName(name)
+{
+    name = name.replace(/[\[]/, "\\\[").replace(/[\]]/, "\\\]");
+    var regexS = "[\\?&]" + name + "=([^&#]*)";
+    var regex = new RegExp(regexS);
+    var results = regex.exec(window.location.search);
+    if(results == null) {
+        return "";
+    } else {
+        return results[1].replace(/\+/g, " ");
+    }
+}
+
+function showTweets() {
+    
+    if(lastTime > timedTweets.length) {
+        return;
+    }
+    
+    $('#clock').text(displayTimeMoment.format('MMMM Do YYYY, h:mm:ss a'));
+    var tweets = timedTweets.slice(lastTime, displaySeconds);
+    tweets = tweets.filter(function(value) { return value !== undefined });    
+    lastTime = displaySeconds;
+
+    if(tweets.length > 0) {
+        $.each(tweets, function(key, val) {
+            $('#tweetTemplate').tmpl(val).prependTo('#tweets');
+        });
+    }
+    displaySeconds += timerMultiplier;
+    displayTimeMoment.add('s', timerMultiplier);
+}
+
+function getData(q) {
+    $('#loading').append('.');
+    fetchData(q, function() {
         rawTweets.sort(function(a,b) { return a.id - b.id });
         var startTime = new Date(rawTweets[0].created_at);
         displayTimeMoment = moment(startTime);
@@ -76,61 +171,28 @@ $(document).ready(function() {
             val.created_at = moment(currentTime).format('MMMM Do YYYY, h:mm:ss a');
             val.text = val.text.parseURL().parseUsername().parseHashtag();
             val.from_user = '<a href="https://twitter.com/' + val.from_user + '" target="_blank">@' + val.from_user + '</a>'; 
-            timedTweets[((currentTime - startTime)  / 1000).toString()] = val;
+            timedTweets[((currentTime - startTime)  / 1000)] = val;
         });
-        
+
         rawTweets = new Array();
+        $('#loading').hide();
+        
         displayInterval = setInterval(showTweets, displayIntervalWait);
-        setTimeout(function() { $('.btn-group').removeClass('hidden'); }, displayIntervalWait);
-        
-        $('#play-pause').click(function() {
-            $(this).children(":first").removeClass('icon-' + (isPaused ? 'play' : 'pause'));
-            $(this).children(":first").addClass('icon-' + (isPaused ? 'pause' : 'play'));
-
-            if(isPaused) {
-                displayInterval = setInterval(showTweets, displayIntervalWait);
-            } else {
-                clearInterval(displayInterval);
-            }
-            
-            isPaused = !isPaused;
-        });
-        
-        $('#normal-speed').click(function() {
-            if(isPaused) { return; }
-            displayIntervalWait = 1000;
-            clearInterval(displayInterval);
-            displayInterval = setInterval(showTweets, displayIntervalWait);
-        });
-        
-        $('#faster-speed').click(function() {
-            if(isPaused) { return; }
-            displayIntervalWait = displayIntervalWait / 10;
-            clearInterval(displayInterval);
-            displayInterval = setInterval(showTweets, displayIntervalWait);
-        });
+        setTimeout(function() { $('.btn-group').show(); $('#ads').show(); }, displayIntervalWait);
     });
-});
-
-function showTweets() {
-    $('#clock').text(displayTimeMoment.format('MMMM Do YYYY, h:mm:ss a'));
-    if(timedTweets[displaySeconds.toString()]) {
-        $('#tweetTemplate').tmpl(timedTweets[displaySeconds.toString()]).prependTo('#tweets');
-    }
-    displaySeconds++;
-    displayTimeMoment.add('s', 1);
 }
 
-function getData(q, callback) {  
+function fetchData(q, callback) {  
     $.ajax({
         url: q,
         dataType: 'jsonp',
-    }).done(function(data) {        
+    }).done(function(data) {    
         $.each(data.results, function(key, val) {
             rawTweets.push(val);
         });
 
-        if(data.next_page) {
+        // Max API limit: 1500 tweets. Boo.
+        if(data.next_page && rawTweets.length < 1400) {
             getData(baseURL + data.next_page, callback);
         }
         else {
@@ -144,20 +206,30 @@ function getData(q, callback) {
 <body>
     <div class="container">
             <div class="page-header">
-                <h1>Twitter Playback <small>#lizanddick in real time</small></h1>
+                <h1>Twitter Playback <small>DVR for Twitter</small></h1>
             </div>
         
+            <div class="span11">
+                <form class="form-search" id="search-form">
+                    <input type="text" id="query" style="width:80%" class="search-query" /><button class="btn" type="submit" id="query-submit">Search</button>
+                    <p id="help-text">Enter a search phrase using <a href="https://support.twitter.com/articles/71577-how-to-use-advanced-twitter-search" target="_blank">Twitter's search syntax</a>.<br />For example, <a href="/?q=from%3Aaimeemann+OR+from%3Apattonoswalt+OR+from%3Acampsucks+OR+from%3AMPenn+%23lizanddick">from:aimeemann OR from:pattonoswalt OR from:campsucks OR from:MPenn #lizanddick</a></p>
+                </form>
+            </div>
             <div class="span7 content">
+                <h4 id="loading" class="hidden">Loading</h4>
                 <div id="tweets"></div>
             </div>
             <div class="span4">
                 <h4 id="clock"></h4>
                 <div class="btn-group hidden">
-                    <a class="btn" href="#play-pause" title="Play/Pause" id="play-pause"><i class="icon-pause"></i></a>
-                    <a class="btn" href="#normal-speed" title="Normal Speed" id="normal-speed"><i class="icon-minus"></i></a>
-                    <a class="btn" href="#speed-up" title="Speed Up!" id="faster-speed"><i class="icon-plus"></i></a>
+                    <a class="btn" title="Play/Pause" id="play-pause"><i class="icon-pause"></i></a>
+                    <a class="btn" title="Normal Speed" id="normal-speed"><i class="icon-minus"></i></a>
+                    <a class="btn" title="Speed Up!" id="faster-speed"><i class="icon-plus"></i></a>
+                </div>
+                <div id="ads" class="hidden">
+                    <iframe src="http://rcm.amazon.com/e/cm?t=tplayback-20&o=1&p=20&l=ur1&category=cybermonday&banner=1AJJX0P8WRXFPFDSBFG2&f=ifr" width="120" height="90" scrolling="no" border="0" marginwidth="0" style="border:none;" frameborder="0"></iframe>                    
+                </div>
             </div>
-        </div>
     </div>
 
     <script src="http://d3nu01el40zolk.cloudfront.net/js/moment.min.js"></script>
