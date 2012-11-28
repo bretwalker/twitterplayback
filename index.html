@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Twitter Playback</title>
+    
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+    <script src="http://ajax.microsoft.com/ajax/jquery.templates/beta1/jquery.tmpl.min.js"></script>
+    <link href="http://d3nu01el40zolk.cloudfront.net/bootstrap/css/bootstrap.min.css" rel="stylesheet" media="screen"/>
+  </head>
+
+<style>
+   
+    .content { background-color: #fff; }
+    .tweet { padding: 5px; margin-top: 10px; }
+    .tweet img { padding-left: 10px;  }
+    .tweet h4, .tweet h5 { margin: 0; display: inline; }
+    .tweet h5 { padding-left: 10px; }
+    .tweet .tweet-footer { display: block; margin-top: 2px; color: #d3d3d3; }
+    .hidden { display: none; }
+</style>
+
+<script id="tweetTemplate" type="text/x-jquery-tmpl">
+    <div class="tweet row">
+        <div class="span1"><img src="${profile_image_url}"></div>
+        <div class="span5">
+            <h4>${from_user_name}</h4><h5>{{html from_user}}</h5>
+            <p>{{html text}}
+            <span class="tweet-footer">${created_at}</span></p>
+            
+        </div>
+    </div>
+</script>
+
+<script type="text/javascript">
+
+var baseURL = 'http://search.twitter.com/search.json';
+var rawTweets = new Array();
+var timedTweets = new Array();
+var displayInterval;
+var displayIntervalWait = 1000;
+var displaySeconds = 0;
+var displayTimeMoment;
+var displayTimeMomentDuration;
+var isPaused = false;
+
+String.prototype.parseURL = function() {
+	return this.replace(/[A-Za-z]+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&~\?\/.=]+/g, function(url) {
+		return '<a href="' + url + '" target="_blank">' + url + '</a>';
+	});
+};
+
+String.prototype.parseUsername = function() {
+	return this.replace(/[@]+[A-Za-z0-9-_]+/g, function(u) {
+		var username = u.replace("@","")
+		return '<a href="https://twitter.com/' + username + '" target="_blank">' + u + '</a>';
+	});
+};
+
+String.prototype.parseHashtag = function() {
+	return this.replace(/[#]+[A-Za-z0-9-_]+/g, function(t) {
+		var tag = t.replace("#","%23")
+		return '<a href="http://search.twitter.com/search?q=' + tag + '" target="_blank">' + t + '</a>';
+	});
+};
+
+$(document).ready(function() {  
+    displayTimeMomentDuration = moment.duration(1000, 'milliseconds');  
+    var q = baseURL + '?q=from%3Aaimeemann+OR+from%3Apattonoswalt+OR+from%3Acampsucks+OR+from%3AMPenn+%23lizanddick&rpp=100';    
+    
+    getData(q, function() {
+        rawTweets.sort(function(a,b) { return a.id - b.id });
+        var startTime = new Date(rawTweets[0].created_at);
+        displayTimeMoment = moment(startTime);
+        $.each(rawTweets, function(key, val) {
+            var currentTime = new Date(val.created_at);
+            val.created_at = moment(currentTime).format('MMMM Do YYYY, h:mm:ss a');
+            val.text = val.text.parseURL().parseUsername().parseHashtag();
+            val.from_user = '<a href="https://twitter.com/' + val.from_user + '" target="_blank">@' + val.from_user + '</a>'; 
+            timedTweets[((currentTime - startTime)  / 1000).toString()] = val;
+        });
+        
+        rawTweets = new Array();
+        displayInterval = setInterval(showTweets, displayIntervalWait);
+        setTimeout(function() { $('.btn-group').removeClass('hidden'); }, displayIntervalWait);
+        
+        $('#play-pause').click(function() {
+            $(this).children(":first").removeClass('icon-' + (isPaused ? 'play' : 'pause'));
+            $(this).children(":first").addClass('icon-' + (isPaused ? 'pause' : 'play'));
+
+            if(isPaused) {
+                displayInterval = setInterval(showTweets, displayIntervalWait);
+            } else {
+                clearInterval(displayInterval);
+            }
+            
+            isPaused = !isPaused;
+        });
+        
+        $('#normal-speed').click(function() {
+            if(isPaused) { return; }
+            displayIntervalWait = 1000;
+            clearInterval(displayInterval);
+            displayInterval = setInterval(showTweets, displayIntervalWait);
+        });
+        
+        $('#faster-speed').click(function() {
+            if(isPaused) { return; }
+            displayIntervalWait = displayIntervalWait / 10;
+            clearInterval(displayInterval);
+            displayInterval = setInterval(showTweets, displayIntervalWait);
+        });
+    });
+});
+
+function showTweets() {
+    $('#clock').text(displayTimeMoment.format('MMMM Do YYYY, h:mm:ss a'));
+    if(timedTweets[displaySeconds.toString()]) {
+        $('#tweetTemplate').tmpl(timedTweets[displaySeconds.toString()]).prependTo('#tweets');
+    }
+    displaySeconds++;
+    displayTimeMoment.add('s', 1);
+}
+
+function getData(q, callback) {  
+    $.ajax({
+        url: q,
+        dataType: 'jsonp',
+    }).done(function(data) {        
+        $.each(data.results, function(key, val) {
+            rawTweets.push(val);
+        });
+
+        if(data.next_page) {
+            getData(baseURL + data.next_page, callback);
+        }
+        else {
+            callback();
+        }
+    });
+}
+
+</script>
+
+<body>
+    <div class="container">
+            <div class="page-header">
+                <h1>Twitter Playback <small>#lizanddick in real time</small></h1>
+            </div>
+        
+            <div class="span7 content">
+                <div id="tweets"></div>
+            </div>
+            <div class="span4">
+                <h4 id="clock"></h4>
+                <div class="btn-group hidden">
+                    <a class="btn" href="#play-pause" title="Play/Pause" id="play-pause"><i class="icon-pause"></i></a>
+                    <a class="btn" href="#normal-speed" title="Normal Speed" id="normal-speed"><i class="icon-minus"></i></a>
+                    <a class="btn" href="#speed-up" title="Speed Up!" id="faster-speed"><i class="icon-plus"></i></a>
+            </div>
+        </div>
+    </div>
+
+    <script src="http://d3nu01el40zolk.cloudfront.net/js/moment.min.js"></script>
+    <script src="http://d3nu01el40zolk.cloudfront.net/bootstrap/js/bootstrap.min.js"></script>
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-3244073-10']);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+</body>
+
+</html>
